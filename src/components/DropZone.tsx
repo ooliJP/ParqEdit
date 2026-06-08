@@ -6,8 +6,6 @@ export function DropZone() {
   const openFile = useAppStore((s) => s.openFile)
   const [isDragging, setIsDragging] = useState(false)
 
-  // File opening is handled by the App-level native window drop listener.
-  // This component only manages the blue-border visual state.
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setIsDragging(false)

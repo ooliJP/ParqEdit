@@ -5,6 +5,7 @@ import {
   Terminal,
   Settings,
   FilterX,
+  RotateCcw,
   Loader2,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
@@ -15,16 +16,19 @@ export function Toolbar() {
     isLoading,
     hasUnsavedChanges,
     sqlMode,
+    sqlEditorOpen,
     columnFilters,
     activePanel,
+    setSqlEditorOpen,
     setSqlMode,
     setActivePanel,
-    clearAllFilters,
+    clearColumnFilters,
+    resetView,
     openFile,
     saveFile,
   } = useAppStore()
 
-  const hasActiveFilters = Object.keys(columnFilters).length > 0 || sqlMode
+  const hasColumnFilters = Object.keys(columnFilters).length > 0
 
   async function handleOpen() {
     const path = await window.api.openFileDialog()
@@ -35,6 +39,14 @@ export function Toolbar() {
     const ext = filePath?.endsWith('.csv') ? 'csv' : 'parquet'
     const savePath = await window.api.saveFileDialog(ext)
     if (savePath) await saveFile(savePath)
+  }
+
+  function toggleSqlEditor() {
+    if (!sqlMode && !sqlEditorOpen) {
+      setSqlEditorOpen(true)
+    } else {
+      setSqlEditorOpen(!sqlEditorOpen)
+    }
   }
 
   function togglePanel(panel: 'metadata' | 'settings') {
@@ -58,7 +70,7 @@ export function Toolbar() {
           <button
             className="btn"
             onClick={handleSave}
-            title="Save file"
+            title="Save file (Ctrl+S)"
             style={hasUnsavedChanges ? { color: 'var(--accent)' } : undefined}
           >
             <Save size={14} />
@@ -69,26 +81,35 @@ export function Toolbar() {
 
           <button
             className="btn"
-            onClick={() => {
-              setSqlMode(!sqlMode)
-              if (sqlMode) clearAllFilters()
-            }}
-            style={sqlMode ? { color: 'var(--accent)', background: 'var(--bg-hover)' } : undefined}
-            title="SQL Query editor"
+            onClick={toggleSqlEditor}
+            style={sqlMode || sqlEditorOpen ? { color: 'var(--accent)', background: 'var(--bg-hover)' } : undefined}
+            title="SQL query editor"
           >
             <Terminal size={14} />
             <span>SQL</span>
           </button>
 
-          {hasActiveFilters && (
+          {hasColumnFilters && (
             <button
               className="btn"
-              onClick={clearAllFilters}
-              title="Clear all filters & sort"
+              onClick={clearColumnFilters}
+              title="Clear column filters"
               style={{ color: 'var(--accent)' }}
             >
               <FilterX size={14} />
               <span>Clear filters</span>
+            </button>
+          )}
+
+          {sqlMode && (
+            <button
+              className="btn"
+              onClick={resetView}
+              title="Reset to original view — clears SQL, filters and sort"
+              style={{ color: 'var(--accent)' }}
+            >
+              <RotateCcw size={14} />
+              <span>Reset view</span>
             </button>
           )}
 

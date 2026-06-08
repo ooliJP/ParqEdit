@@ -32,5 +32,4 @@ execSync(`"${sevenZip}" a -tzip -mx=5 "${dest}" "${src}\\*"`, {
 
 const sizeMB = (fs.statSync(dest).size / 1024 / 1024).toFixed(1)
 console.log(`\nDone! ${sizeMB} MB → ${dest}`)
-console.log('Share this zip with your friends.')
-console.log('They unzip it and double-click ParqEdit.exe — no install needed.')
+console.log('zip is ready.')

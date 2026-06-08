@@ -37,7 +37,14 @@ const api = {
   getDistinctValues: (column: string) => ipcRenderer.invoke('db:get-distinct-values', column),
   updateCell: (rowId: number, column: string, value: any) =>
     ipcRenderer.invoke('db:update-cell', { rowId, column, value }),
-  saveFile: (filePath: string) => ipcRenderer.invoke('db:save-file', filePath),
+  saveFile: (params: {
+    filePath: string
+    sortCol?: string
+    sortDir?: 'asc' | 'desc'
+    filters?: Record<string, string[]>
+    sqlMode?: boolean
+    sqlQuery?: string
+  }) => ipcRenderer.invoke('db:save-file', params),
 
   // Shell
   showInExplorer: (filePath: string) => ipcRenderer.invoke('shell:show-item', filePath),

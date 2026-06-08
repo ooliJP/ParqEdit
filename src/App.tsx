@@ -16,7 +16,7 @@ const SUPPORTED = /\.(parquet|csv)$/i
 export default function App() {
   useTheme()
 
-  const { filePath, sqlMode, activePanel, error, clearError, openFile } = useAppStore()
+  const { filePath, sqlMode, sqlEditorOpen, activePanel, error, clearError, openFile, saveFile } = useAppStore()
 
   useEffect(() => {
     if (!error) return
@@ -24,8 +24,18 @@ export default function App() {
     return () => clearTimeout(t)
   }, [error, clearError])
 
-  // Open file passed via file association or second-instance argv.
-  // If this window already has a file open, spawn a new window instead.
+  useEffect(() => {
+    async function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 's' || !filePath) return
+      e.preventDefault()
+      const ext = filePath.endsWith('.csv') ? 'csv' : 'parquet'
+      const savePath = await window.api.saveFileDialog(ext)
+      if (savePath) await saveFile(savePath)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [filePath, saveFile])
+
   useEffect(() => {
     return window.api.onOpenFile((path) => {
       if (filePath) window.api.openNewWindow(path)
@@ -33,9 +43,6 @@ export default function App() {
     })
   }, [filePath, openFile])
 
-  // ── Window-level drag & drop ─────────────────────────────────────────────
-  // Uses document (not window) + stopPropagation per Electron drag-and-drop docs.
-  // File.path is Electron's non-standard extension; available on drop but not dragover.
   const [dragState, setDragState] = useState<DragState>('none')
 
   useEffect(() => {
@@ -47,8 +54,8 @@ export default function App() {
     function onDragOver(e: DragEvent) {
       e.preventDefault()
       e.stopPropagation()
-      // During dragover the browser may not expose file metadata — default to valid.
-      // We only show red when we have a definite non-matching filename.
+      // File metadata isn't reliably available during dragover — only show red
+      // when we can positively identify an unsupported extension.
       try {
         const item = e.dataTransfer?.items[0]
         if (!item || item.kind !== 'file') { setDragState('valid'); return }
@@ -62,7 +69,6 @@ export default function App() {
     }
 
     function onDragLeave(e: DragEvent) {
-      // relatedTarget is null when leaving the browser window entirely
       if (!e.relatedTarget) setDragState('none')
     }
 
@@ -70,9 +76,9 @@ export default function App() {
       e.preventDefault()
       e.stopPropagation()
       setDragState('none')
-      // File.path is Electron's extension — populated on drop (not dragover)
       const file = e.dataTransfer?.files[0]
       if (!file) return
+      // file.path is an Electron extension on the File object
       const path: string = (file as any).path || ''
       if (!path) return
       if (filePath) window.api.openNewWindow(path)
@@ -91,7 +97,6 @@ export default function App() {
     }
   }, [filePath, openFile])
 
-  // Overlay shown while dragging something over the window
   const showOverlay = dragState !== 'none' && (filePath !== null || dragState === 'invalid')
   const isValid = dragState === 'valid'
 
@@ -126,7 +131,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 relative">
-        {sqlMode && filePath && <SQLEditor />}
+        {sqlEditorOpen && filePath && <SQLEditor />}
 
         <div className="flex-1 min-h-0">
           {filePath ? <DataTable /> : <DropZone />}

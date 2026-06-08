@@ -5,7 +5,7 @@
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/ParqEdit.git"
+    "url": "https://github.com/ooliJP/ParqEdit.git"
   },
   "main": "out/main/index.js",
   "scripts": {

@@ -8,6 +8,7 @@ interface AppActions {
   setEditingCell: (cell: { rowId: number; column: string } | null) => void
   setSqlQuery: (q: string) => void
   setSqlMode: (v: boolean) => void
+  setSqlEditorOpen: (v: boolean) => void
   setPageSize: (n: number) => void
   clearError: () => void
 
@@ -16,7 +17,8 @@ interface AppActions {
   setSortCol: (col: string) => void
   setColumnFilter: (col: string, values: string[]) => void
   clearColumnFilter: (col: string) => void
-  clearAllFilters: () => void
+  clearColumnFilters: () => void
+  resetView: () => void
   runSqlQuery: () => Promise<void>
   updateCell: (rowId: number, column: string, value: any) => Promise<boolean>
   saveFile: (path: string) => Promise<boolean>
@@ -25,24 +27,22 @@ interface AppActions {
 type Store = AppState & AppActions
 
 const DEFAULT_PAGE_SIZE = 2000
+export const DEFAULT_SQL_QUERY = 'SELECT * FROM current_data WHERE '
 
 function friendlyOpenError(raw: string, filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   if (!['parquet', 'csv'].includes(ext)) {
     return `Unsupported file format ".${ext}". Please open a .parquet or .csv file.`
   }
-  // Surface the most common DuckDB messages in plain language
   const r = raw ?? ''
   if (/not found|no such file/i.test(r)) return `File not found: ${filePath}`
   if (/permission|access/i.test(r)) return `Cannot read file — check permissions: ${filePath}`
   if (/invalid|corrupt|magic/i.test(r)) return `File appears corrupt or is not a valid ${ext.toUpperCase()} file.`
   if (/out of memory/i.test(r)) return 'Not enough memory to open this file.'
-  // Fall back to a cleaned-up version of the raw message (strip C++ stack noise)
   return r.split('\n')[0] || 'Failed to open file.'
 }
 
 export const useAppStore = create<Store>((set, get) => ({
-  // Initial state
   filePath: null,
   fileName: null,
   schema: [],
@@ -53,8 +53,9 @@ export const useAppStore = create<Store>((set, get) => ({
   sortCol: null,
   sortDir: 'asc',
   columnFilters: {},
-  sqlQuery: 'SELECT * FROM current_data WHERE ',
+  sqlQuery: DEFAULT_SQL_QUERY,
   sqlMode: false,
+  sqlEditorOpen: false,
   isLoading: false,
   error: null,
   activePanel: 'none',
@@ -69,6 +70,7 @@ export const useAppStore = create<Store>((set, get) => ({
   setEditingCell: (editingCell) => set({ editingCell }),
   setSqlQuery: (sqlQuery) => set({ sqlQuery }),
   setSqlMode: (sqlMode) => set({ sqlMode }),
+  setSqlEditorOpen: (sqlEditorOpen) => set({ sqlEditorOpen }),
   setPageSize: (pageSize) => { set({ pageSize, offset: 0 }); get().loadPage(0) },
   clearError: () => set({ error: null }),
 
@@ -89,8 +91,9 @@ export const useAppStore = create<Store>((set, get) => ({
       sortCol: null,
       sortDir: 'asc',
       columnFilters: {},
-      sqlQuery: 'SELECT * FROM current_data WHERE ',
+      sqlQuery: DEFAULT_SQL_QUERY,
       sqlMode: false,
+      sqlEditorOpen: false,
       hasUnsavedChanges: false,
       editingCell: null,
     })
@@ -151,8 +154,23 @@ export const useAppStore = create<Store>((set, get) => ({
     get().loadPage(0)
   },
 
-  clearAllFilters: () => {
-    set({ columnFilters: {}, sortCol: null, sortDir: 'asc', offset: 0, sqlMode: false, sqlQuery: '' })
+  // Clears only column filters — SQL results and sort remain
+  clearColumnFilters: () => {
+    set({ columnFilters: {}, offset: 0 })
+    get().loadPage(0)
+  },
+
+  // Resets everything: SQL, filters, sort
+  resetView: () => {
+    set({
+      columnFilters: {},
+      sortCol: null,
+      sortDir: 'asc',
+      offset: 0,
+      sqlMode: false,
+      sqlEditorOpen: false,
+      sqlQuery: DEFAULT_SQL_QUERY,
+    })
     get().loadPage(0)
   },
 
@@ -169,7 +187,6 @@ export const useAppStore = create<Store>((set, get) => ({
       set({ error: result.error })
       return false
     }
-    // Update local rows optimistically
     set((state) => ({
       rows: state.rows.map((r) =>
         r.__rowid__ === rowId ? { ...r, [column]: value } : r
@@ -180,8 +197,16 @@ export const useAppStore = create<Store>((set, get) => ({
   },
 
   saveFile: async (path) => {
+    const { sortCol, sortDir, columnFilters, sqlMode, sqlQuery } = get()
     set({ isLoading: true })
-    const result: any = await window.api.saveFile(path)
+    const result: any = await window.api.saveFile({
+      filePath: path,
+      sortCol: sortCol ?? undefined,
+      sortDir,
+      filters: columnFilters,
+      sqlMode,
+      sqlQuery,
+    })
     set({ isLoading: false })
     if (result.error) {
       set({ error: result.error })

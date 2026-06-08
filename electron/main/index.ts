@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
-// When packaged, load duckdb from extraResources (outside the asar)
+// In dev, require duckdb from node_modules. When packaged, it lives outside the
+// asar bundle in extraResources so the native addon can be loaded by path.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const duckdb = app.isPackaged
   ? require(join(process.resourcesPath, 'duckdb'))
@@ -22,7 +23,15 @@ interface GetPageParams {
   sqlQuery?: string
 }
 
-// Per-window DuckDB state — keyed by webContents.id
+interface SaveFileParams {
+  filePath: string
+  sortCol?: string
+  sortDir?: 'asc' | 'desc'
+  filters?: Record<string, string[]>
+  sqlMode?: boolean
+  sqlQuery?: string
+}
+
 interface WindowState {
   db: any
   conn: any
@@ -62,15 +71,14 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/')
 }
 
-// Single instance lock — route subsequent launches to the existing window
+function getArgvFilePath(argv: string[]): string | undefined {
+  return argv.slice(app.isPackaged ? 1 : 2).find((a) => /\.(parquet|csv)$/i.test(a))
+}
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
   process.exit(0)
-}
-
-function getArgvFilePath(argv: string[]): string | undefined {
-  return argv.slice(app.isPackaged ? 1 : 2).find((a) => /\.(parquet|csv)$/i.test(a))
 }
 
 function createWindow(initialFilePath?: string): BrowserWindow {
@@ -105,7 +113,7 @@ function createWindow(initialFilePath?: string): BrowserWindow {
     if (initialFilePath) win.webContents.send('open-file', initialFilePath)
   })
 
-  // Capture the ID while webContents is still alive (before 'closed' destroys it)
+  // Capture the id before 'closed' fires — webContents is destroyed by then
   const wcId = win.webContents.id
   win.on('closed', () => {
     const state = windowStates.get(wcId)
@@ -120,7 +128,6 @@ function createWindow(initialFilePath?: string): BrowserWindow {
 }
 
 app.on('second-instance', (_event, argv) => {
-  // Focus the most recently created window; let the renderer decide new window vs. same
   const wins = BrowserWindow.getAllWindows()
   if (wins.length === 0) return
   const target = wins[wins.length - 1]
@@ -130,7 +137,6 @@ app.on('second-instance', (_event, argv) => {
   if (filePath) target.webContents.send('open-file', filePath)
 })
 
-// ─── Window controls (per-window via event.sender) ─────────────────────────
 ipcMain.on('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize())
 ipcMain.on('window:maximize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -139,12 +145,10 @@ ipcMain.on('window:maximize', (event) => {
 })
 ipcMain.on('window:close', (event) => BrowserWindow.fromWebContents(event.sender)?.close())
 
-// Open a file in a brand-new window (renderer calls this when it already has a file open)
 ipcMain.handle('window:open-new', (_event, filePath: string) => {
   createWindow(filePath)
 })
 
-// ─── File dialogs ──────────────────────────────────────────────────────────
 ipcMain.handle('dialog:open-file', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (!win) return null
@@ -175,7 +179,6 @@ ipcMain.handle('dialog:save-file', async (event, defaultExt: string) => {
   return result.canceled ? null : result.filePath
 })
 
-// ─── Open file ─────────────────────────────────────────────────────────────
 ipcMain.handle('db:open-file', async (event, filePath: string) => {
   const state = getState(event.sender.id)
   try {
@@ -212,40 +215,37 @@ ipcMain.handle('db:open-file', async (event, filePath: string) => {
   }
 })
 
-// ─── Get page ──────────────────────────────────────────────────────────────
 ipcMain.handle('db:get-page', async (event, params: GetPageParams) => {
   const state = getState(event.sender.id)
   if (!state.conn) return { rows: [], total: 0 }
   const { offset, limit, sortCol, sortDir, filters, sqlQuery } = params
 
   try {
-    let baseQuery: string
+    // Build the base source — either the user's SQL or the raw table
+    let baseQuery = sqlQuery?.trim()
+      ? `WITH __user_query AS (${sqlQuery}) SELECT * FROM __user_query WHERE 1=1`
+      : `SELECT * FROM current_data WHERE 1=1`
 
-    if (sqlQuery && sqlQuery.trim()) {
-      baseQuery = `WITH __user_query AS (${sqlQuery}) SELECT * FROM __user_query`
-    } else {
-      baseQuery = `SELECT * FROM current_data WHERE 1=1`
+    // Apply column filters (works on top of SQL results too)
+    if (filters) {
+      for (const [col, values] of Object.entries(filters)) {
+        if (!values || values.length === 0) continue
+        const hasNull = values.includes('__null__')
+        const nonNull = values.filter((v) => v !== '__null__')
+        const quoted = nonNull.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')
 
-      if (filters) {
-        for (const [col, values] of Object.entries(filters)) {
-          if (!values || values.length === 0) continue
-          const hasNull = values.includes('__null__')
-          const nonNull = values.filter((v) => v !== '__null__')
-          const quoted = nonNull.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')
-
-          if (hasNull && nonNull.length > 0) {
-            baseQuery += ` AND ("${col}" IS NULL OR "${col}"::VARCHAR IN (${quoted}))`
-          } else if (hasNull) {
-            baseQuery += ` AND "${col}" IS NULL`
-          } else {
-            baseQuery += ` AND "${col}"::VARCHAR IN (${quoted})`
-          }
+        if (hasNull && nonNull.length > 0) {
+          baseQuery += ` AND ("${col}" IS NULL OR "${col}"::VARCHAR IN (${quoted}))`
+        } else if (hasNull) {
+          baseQuery += ` AND "${col}" IS NULL`
+        } else {
+          baseQuery += ` AND "${col}"::VARCHAR IN (${quoted})`
         }
       }
+    }
 
-      if (sortCol) {
-        baseQuery += ` ORDER BY "${sortCol}" ${sortDir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`
-      }
+    if (sortCol) {
+      baseQuery += ` ORDER BY "${sortCol}" ${sortDir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`
     }
 
     const rows = await runAll(state.conn, `${baseQuery} LIMIT ${limit} OFFSET ${offset}`)
@@ -255,9 +255,10 @@ ipcMain.handle('db:get-page', async (event, params: GetPageParams) => {
       return { ...rest, __rowid__: Number(__rowid__) }
     })
 
+    // Recount when SQL or filters are active (result set differs from raw table)
     let pageTotal = state.totalRows
-    if (sqlQuery && sqlQuery.trim()) {
-      const cntRows = await runAll(state.conn, `WITH __user_query AS (${sqlQuery}) SELECT COUNT(*) AS cnt FROM __user_query`)
+    if (sqlQuery?.trim() || (filters && Object.keys(filters).length > 0)) {
+      const cntRows = await runAll(state.conn, `SELECT COUNT(*) AS cnt FROM (${baseQuery}) __counted`)
       pageTotal = Number(cntRows[0].cnt)
     }
 
@@ -267,7 +268,6 @@ ipcMain.handle('db:get-page', async (event, params: GetPageParams) => {
   }
 })
 
-// ─── Get metadata ──────────────────────────────────────────────────────────
 ipcMain.handle('db:get-metadata', async (event) => {
   const state = getState(event.sender.id)
   if (!state.conn || !state.currentFilePath) return null
@@ -298,7 +298,6 @@ ipcMain.handle('db:get-metadata', async (event) => {
   }
 })
 
-// ─── Distinct values for filter ─────────────────────────────────────────────
 ipcMain.handle('db:get-distinct-values', async (event, column: string) => {
   const state = getState(event.sender.id)
   if (!state.conn) return []
@@ -313,7 +312,6 @@ ipcMain.handle('db:get-distinct-values', async (event, column: string) => {
   }
 })
 
-// ─── Update cell ───────────────────────────────────────────────────────────
 ipcMain.handle('db:update-cell', async (event, { rowId, column, value }: { rowId: number; column: string; value: any }) => {
   const state = getState(event.sender.id)
   if (!state.conn) return { error: 'No connection' }
@@ -338,19 +336,43 @@ ipcMain.handle('db:update-cell', async (event, { rowId, column, value }: { rowId
   }
 })
 
-// ─── Save file ─────────────────────────────────────────────────────────────
-ipcMain.handle('db:save-file', async (event, filePath: string) => {
+ipcMain.handle('db:save-file', async (event, params: SaveFileParams) => {
   const state = getState(event.sender.id)
   if (!state.conn) return { error: 'No connection' }
+  const { filePath, sortCol, sortDir, filters, sqlMode, sqlQuery } = params
   try {
     const ext = filePath.split('.').pop()?.toLowerCase()
     const safeP = normalizePath(filePath)
+
     const cols = state.tableSchema.map((c) => `"${c.name}"`).join(', ')
 
+    let selectQuery = sqlMode && sqlQuery?.trim()
+      ? `WITH __user_query AS (${sqlQuery}) SELECT * FROM __user_query WHERE 1=1`
+      : `SELECT ${cols} FROM current_data WHERE 1=1`
+
+    if (filters) {
+      for (const [col, values] of Object.entries(filters)) {
+        if (!values || values.length === 0) continue
+        const hasNull = values.includes('__null__')
+        const nonNull = values.filter((v) => v !== '__null__')
+        const quoted = nonNull.map((v) => `'${v.replace(/'/g, "''")}'`).join(',')
+        if (hasNull && nonNull.length > 0) {
+          selectQuery += ` AND ("${col}" IS NULL OR "${col}"::VARCHAR IN (${quoted}))`
+        } else if (hasNull) {
+          selectQuery += ` AND "${col}" IS NULL`
+        } else {
+          selectQuery += ` AND "${col}"::VARCHAR IN (${quoted})`
+        }
+      }
+    }
+    if (sortCol) {
+      selectQuery += ` ORDER BY "${sortCol}" ${sortDir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`
+    }
+
     if (ext === 'csv') {
-      await runExec(state.conn, `COPY (SELECT ${cols} FROM current_data ORDER BY __rowid__) TO '${safeP}' (FORMAT CSV, HEADER true)`)
+      await runExec(state.conn, `COPY (${selectQuery}) TO '${safeP}' (FORMAT CSV, HEADER true)`)
     } else {
-      await runExec(state.conn, `COPY (SELECT ${cols} FROM current_data ORDER BY __rowid__) TO '${safeP}' (FORMAT PARQUET)`)
+      await runExec(state.conn, `COPY (${selectQuery}) TO '${safeP}' (FORMAT PARQUET)`)
     }
 
     return { success: true }
@@ -363,7 +385,6 @@ ipcMain.handle('shell:show-item', async (_, filePath: string) => {
   shell.showItemInFileManager(filePath)
 })
 
-// ─── App lifecycle ─────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   const initialFile = getArgvFilePath(process.argv)
   createWindow(initialFile)
