@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v node)",
+      "Read(//usr/local/**)",
+      "Read(//c/Users/mamis/.nvm/versions/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/mamis/**)",
+      "Bash(cmd.exe /c \"where npm 2>nul || echo NOT_FOUND\")",
+      "Bash(cmd.exe /c \"where node 2>nul || echo NOT_FOUND\")",
+      "Bash(cmd.exe /c \"dir C:\\\\sidep\\\\ParqEdit 2>nul || echo DOES_NOT_EXIST\")",
+      "Bash(cmd.exe /c \"where 7z 2>nul || echo no7z\")",
+      "Bash(node -e ' *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\sidep\\\\ParqEdit\" -Force)",
+      "Bash(Select-Object Mode, Name)",
+      "Bash(Format-Table -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\sidep\\\\ParqEdit\\\\electron\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"D:\\\\sidep\\\\ParqEdit\\\\\"\\), \"\" })",
+      "Bash(Get-ChildItem \"D:\\\\sidep\\\\ParqEdit\\\\node_modules\\\\duckdb\" -Depth 2)",
+      "Bash(Select-Object FullName, Length)",
+      "PowerShell(node -e \"const p = require\\('@mapbox/node-pre-gyp'\\); const path = require\\('path'\\); console.log\\(p.find\\(path.resolve\\('D:/sidep/ParqEdit/node_modules/duckdb/package.json'\\)\\)\\)\" 2>&1)",
+      "PowerShell(Test-Path \"D:\\\\sidep\\\\ParqEdit\\\\node_modules\\\\duckdb\\\\lib\\\\binding\\\\duckdb.node\"; Get-Item \"D:\\\\sidep\\\\ParqEdit\\\\node_modules\\\\duckdb\\\\lib\\\\binding\" | Select-Object FullName, Mode; \\(Get-ChildItem \"D:\\\\sidep\\\\ParqEdit\\\\node_modules\\\\duckdb\\\\lib\\\\binding\" -Force\\).Count)",
+      "PowerShell(cd \"D:\\\\sidep\\\\ParqEdit\"; $env:CSC_IDENTITY_AUTO_DISCOVERY=\"false\"; npx electron-builder --win --publish=never 2>&1)",
+      "PowerShell($cacheDir = \"$env:LOCALAPPDATA\\\\electron-builder\\\\Cache\\\\nsis\"; Get-ChildItem $cacheDir -ErrorAction SilentlyContinue | Select-Object Name)",
+      "Bash(npx electron-vite *)"
+    ]
+  }
+}
