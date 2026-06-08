@@ -98,7 +98,6 @@ const TableRow = memo(function TableRow({
         background: isRowSelected ? undefined : index % 2 === 1 ? 'var(--row-alt)' : undefined,
       }}
     >
-      {/* Row number — clickable for selection */}
       <div
         className="table-cell row-num-cell"
         style={{ width: 56, minWidth: 56, justifyContent: 'flex-end', color: 'var(--text-muted)', fontSize: 10 }}
@@ -148,7 +147,6 @@ export function DataTable() {
   const [filterDropdown, setFilterDropdown] = useState<{ col: string; rect: DOMRect } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // ── Column widths (resize) ──────────────────────────────────────────────────
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const [resizingCol, setResizingCol] = useState<string | null>(null)
   const resizingRef = useRef<{ colName: string; startX: number; startWidth: number } | null>(null)
@@ -184,16 +182,13 @@ export function DataTable() {
     setResizingCol(colName)
   }
 
-  // ── Selection state ─────────────────────────────────────────────────────────
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [selectedCols, setSelectedCols] = useState<Set<number>>(new Set())
   const rowDragRef = useRef<{ start: number } | null>(null)
   const colDragRef = useRef<{ startCol: number; moved: boolean } | null>(null)
 
-  // Clear selection when file or page changes
   useEffect(() => { setSelectedRows(new Set()); setSelectedCols(new Set()) }, [filePath, offset])
 
-  // End drags on mouseup anywhere
   useEffect(() => {
     function onUp() {
       rowDragRef.current = null
@@ -203,7 +198,6 @@ export function DataTable() {
     return () => window.removeEventListener('mouseup', onUp)
   }, [])
 
-  // ── Row selection ──────────────────────────────────────────────────────────
   const handleRowNumMouseDown = useCallback((e: React.MouseEvent, rowIdx: number) => {
     e.preventDefault()
     setSelectedCols(new Set())
@@ -226,7 +220,6 @@ export function DataTable() {
     setSelectedRows(new Set(Array.from({ length: max - min + 1 }, (_, i) => min + i)))
   }, [])
 
-  // ── Column selection ───────────────────────────────────────────────────────
   function handleColHeaderMouseDown(e: React.MouseEvent, colIdx: number) {
     if (e.ctrlKey || e.metaKey) {
       e.stopPropagation()
@@ -263,7 +256,6 @@ export function DataTable() {
     setSortCol(col.name)
   }
 
-  // ── Copy to clipboard ──────────────────────────────────────────────────────
   function copyToClipboard() {
     const colsToUse = selectedCols.size > 0 ? schema.filter((_, i) => selectedCols.has(i)) : schema
     const rowsToUse = selectedRows.size > 0 ? rows.filter((_, i) => selectedRows.has(i)) : rows
@@ -291,7 +283,6 @@ export function DataTable() {
     }
   }
 
-  // ── Virtualizer ─────────────────────────────────────────────────────────────
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => containerRef.current,

@@ -23,7 +23,7 @@ function getReservedWordHint(error: string, query: string): string | null {
 }
 
 export function SQLEditor() {
-  const { sqlQuery, setSqlQuery, runSqlQuery, setSqlMode, clearAllFilters, error } = useAppStore()
+  const { sqlQuery, setSqlQuery, runSqlQuery, setSqlEditorOpen, error } = useAppStore()
 
   async function run() {
     if (!sqlQuery.trim() || sqlQuery.trim() === 'SELECT * FROM current_data WHERE') return
@@ -31,8 +31,7 @@ export function SQLEditor() {
   }
 
   function close() {
-    clearAllFilters()
-    setSqlMode(false)
+    setSqlEditorOpen(false)
   }
 
   const hint = error ? getReservedWordHint(error, sqlQuery) : null

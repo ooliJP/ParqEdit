@@ -17,6 +17,14 @@ A fast, lightweight desktop viewer and editor for Parquet and CSV files.
 - **Dark / light theme** — follows system preference, toggleable in settings
 - **Export** — save the current view (with any edits or SQL results) back to Parquet or CSV
 
+## Privacy & security
+
+- **Fully local** — all processing happens on your machine. Your files are never uploaded anywhere.
+- **No telemetry** — ParqEdit makes no network requests and collects no usage data.
+- **Works offline** — no internet connection required after installation.
+- **No background processes** — the app runs only when you open it and leaves nothing running when closed.
+- **Open source** — the entire codebase is here, so you can audit exactly what it does.
+
 ## Supported formats
 
 | Format | Read | Write |
@@ -37,7 +45,7 @@ Download the latest installer from the [Releases](../../releases) page and run i
 ## Build from source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ParqEdit.git
+git clone https://github.com/ooliJP/ParqEdit.git
 cd ParqEdit
 npm install        # also downloads and patches the DuckDB native binary
 npm run dev        # start in development mode with hot reload
