@@ -1,0 +1,95 @@
+{
+  "name": "parqedit",
+  "version": "1.0.0",
+  "description": "A fast, lightweight desktop viewer and editor for Parquet and CSV files",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/ParqEdit.git"
+  },
+  "main": "out/main/index.js",
+  "scripts": {
+    "postinstall": "node fix-duckdb.js",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --publish=never",
+    "dist:zip": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --dir && node scripts/make-zip.js",
+    "build:dir": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.parqedit.app",
+    "productName": "ParqEdit",
+    "copyright": "Copyright © 2025",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "assets/app_icon.ico",
+      "signingHashAlgorithms": [],
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ParqEdit",
+      "uninstallDisplayName": "ParqEdit",
+      "deleteAppDataOnUninstall": false
+    },
+    "fileAssociations": [
+      {
+        "ext": "parquet",
+        "name": "Parquet File",
+        "description": "Apache Parquet file",
+        "icon": "assets/app_icon.ico",
+        "role": "Editor"
+      }
+    ],
+    "files": [
+      "out/**/*",
+      "!out/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/duckdb",
+        "to": "duckdb",
+        "filter": [
+          "lib/**/*",
+          "package.json"
+        ]
+      }
+    ],
+    "asar": true,
+    "afterPack": "scripts/afterPack.js",
+    "npmRebuild": false
+  },
+  "dependencies": {
+    "@codemirror/lang-sql": "^6.8.0",
+    "@tanstack/react-virtual": "^3.10.9",
+    "@uiw/react-codemirror": "^4.23.6",
+    "duckdb": "^1.2.2",
+    "lucide-react": "^0.468.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

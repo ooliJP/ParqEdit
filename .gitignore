@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+release/
+dist/
+
+# DuckDB native binary (downloaded by postinstall, platform-specific — not committed)
+node_modules/duckdb/lib/binding/
+
+# Electron-builder cache
+.electron-builder-cache/
+
+# Vite / TypeScript cache
+*.tsbuildinfo
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
