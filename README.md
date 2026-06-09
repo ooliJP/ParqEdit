@@ -2,6 +2,8 @@
 
 A fast, lightweight desktop viewer and editor for Parquet and CSV files.
 
+**[parqedit.com](https://parqedit.com)** · [Download](../../releases/latest) · [Issues](../../issues)
+
 ![ParqEdit screenshot](assets/demo.png)
 
 ## Features
