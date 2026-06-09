@@ -38,3 +38,9 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Local one-off fix scripts (machine-specific paths)
+fix-electron.js
+
+# Claude settings (local IDE config)
+.claude/

@@ -1,6 +1,6 @@
 {
   "name": "parqedit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A fast, lightweight desktop viewer and editor for Parquet and CSV files",
   "license": "GPL-3.0-only",
   "repository": {
