@@ -1,6 +1,8 @@
 # ParqEdit
 
-A fast, lightweight desktop viewer and editor for Parquet and CSV files.
+Desktop Parquet viewer and editor for quickly inspecting, querying, and editing Parquet and CSV files without writing Python scripts.
+
+I built ParqEdit because working with Parquet files should not require a pile of one-off Python scripts just to inspect, edit, or understand your data. It started as a fix for my own annoying little workflow problems, and I hope it helps anyone who has felt the same.
 
 **[parqedit.com](https://parqedit.com)** · [Download](../../releases/latest) · [Issues](../../issues)
 
@@ -18,6 +20,20 @@ A fast, lightweight desktop viewer and editor for Parquet and CSV files.
 - **File association** — set ParqEdit as the default app for `.parquet` files; double-clicking opens directly
 - **Dark / light theme** — follows system preference, toggleable in settings
 - **Export** — save the current view (with any edits or SQL results) back to Parquet or CSV
+
+## What’s next
+
+Some things I’m planning or thinking about:
+
+- [ ] Drag and drop files (it's more of a bug fix than a new feature. it's already there in the code, but no working properly)
+- [ ] Connect to AWS S3 buckets (would be nice to have this for my work; request or feel free to add other DBs if you need)
+- [ ] Better error logs.
+- [ ] Query history
+- [ ] Add compression options for parquet
+- [ ] Creating a new parquet
+- [ ] More export options
+- [ ] Improve UI. I was more focused on what's happening under the hood, so used Claude to quickly generate the UI. Would be nice to replace current standard AI look with something unique
+- [ ] New keybind "Shift + LMB" to select multiple rows
 
 ## Privacy & security
 
