@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -53,6 +53,27 @@ interface WindowState {
 }
 
 const windowStates = new Map<number, WindowState>()
+
+// ---------------------------------------------------------------------------
+// Themed app icon — switches between orange (light) and blue (dark) based on
+// the Windows system colour scheme. The PNG files are shipped as extraResources
+// so they're accessible in both dev and packaged builds.
+// ---------------------------------------------------------------------------
+
+function getIconPath(isDark: boolean): string {
+  const file = isDark ? 'icon_dark.png' : 'icon_light.png'
+  return app.isPackaged
+    ? join(process.resourcesPath, 'icons', file)
+    : join(__dirname, '../../assets', file)
+}
+
+function updateAllWindowIcons() {
+  const isDark = nativeTheme.shouldUseDarkColors
+  const icon = nativeImage.createFromPath(getIconPath(isDark))
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.setIcon(icon)
+  }
+}
 
 function getState(id: number): WindowState {
   if (!windowStates.has(id)) {
@@ -247,7 +268,7 @@ function createWindow(initialFilePath?: string): BrowserWindow {
     minHeight: 600,
     frame: false,
     backgroundColor: '#09090b',
-    icon: join(__dirname, '../../assets/app_icon.ico'),
+    icon: nativeImage.createFromPath(getIconPath(nativeTheme.shouldUseDarkColors)),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -675,6 +696,8 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+  // Live-update the taskbar icon when Windows switches between light and dark
+  nativeTheme.on('updated', updateAllWindowIcons)
 })
 
 app.on('window-all-closed', () => {

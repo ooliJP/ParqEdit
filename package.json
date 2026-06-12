@@ -13,6 +13,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "create-icons": "node scripts/create-icons.js",
     "dist": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --publish=never",
     "dist:zip": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --dir && node scripts/make-zip.js",
     "build:dir": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win --dir"
@@ -33,7 +34,7 @@
           ]
         }
       ],
-      "icon": "assets/app_icon.ico",
+      "icon": "assets/icon_light.ico",
       "signingHashAlgorithms": [],
       "sign": null
     },
@@ -51,7 +52,7 @@
         "ext": "parquet",
         "name": "Parquet File",
         "description": "Apache Parquet file",
-        "icon": "assets/app_icon.ico",
+        "icon": "assets/icon_light.ico",
         "role": "Editor"
       }
     ],
@@ -67,6 +68,11 @@
           "lib/**/*",
           "package.json"
         ]
+      },
+      {
+        "from": "assets",
+        "to": "icons",
+        "filter": ["icon_light.png", "icon_dark.png"]
       }
     ],
     "asar": true,
@@ -92,6 +98,7 @@
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "jimp": "^0.22.12",
     "playwright-core": "^1.60.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
