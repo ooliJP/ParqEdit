@@ -44,3 +44,9 @@ fix-electron.js
 
 # Claude settings (local IDE config)
 .claude/
+
+# Local UI screenshot harness (not part of the app)
+tmp-uishots/
+
+# Design-phase mockups (not part of the app)
+design-concepts/

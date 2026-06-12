@@ -26,7 +26,12 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/app_icon.ico",
       "signingHashAlgorithms": [],
@@ -70,7 +75,9 @@
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.8.0",
-    "@tanstack/react-virtual": "^3.10.9",
+    "@fontsource/geist-mono": "^5.2.8",
+    "@fontsource/geist-sans": "^5.2.5",
+    "@fontsource/space-grotesk": "^5.2.10",
     "@uiw/react-codemirror": "^4.23.6",
     "duckdb": "^1.2.2",
     "lucide-react": "^0.468.0",
@@ -85,6 +92,7 @@
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "playwright-core": "^1.60.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

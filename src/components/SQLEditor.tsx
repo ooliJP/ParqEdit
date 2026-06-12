@@ -1,6 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { sql } from '@codemirror/lang-sql'
-import { Play, X } from 'lucide-react'
+import { X, History, Trash2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 
 const RESERVED_WORDS = new Set([
@@ -23,7 +24,23 @@ function getReservedWordHint(error: string, query: string): string | null {
 }
 
 export function SQLEditor() {
-  const { sqlQuery, setSqlQuery, runSqlQuery, setSqlEditorOpen, error } = useAppStore()
+  const { sqlQuery, setSqlQuery, runSqlQuery, setSqlEditorOpen, error, sqlHistory, clearSqlHistory, theme } = useAppStore()
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyRef = useRef<HTMLDivElement>(null)
+
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+  // Close the history dropdown on outside click
+  useEffect(() => {
+    if (!historyOpen) return
+    function handler(e: MouseEvent) {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) setHistoryOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [historyOpen])
 
   async function run() {
     if (!sqlQuery.trim() || sqlQuery.trim() === 'SELECT * FROM current_data WHERE') return
@@ -46,11 +63,66 @@ export function SQLEditor() {
         className="flex items-center justify-between px-3 py-1.5 border-b text-xs"
         style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
       >
-        <span className="font-medium" style={{ color: 'var(--text)' }}>SQL Query</span>
+        <span className="mono-label font-medium" style={{ color: 'var(--accent)', letterSpacing: '0.08em' }}>SQL QUERY</span>
         <div className="flex items-center gap-2">
           <span style={{ color: 'var(--text-muted)' }}>
-            Table name: <code className="font-mono px-1 rounded" style={{ background: 'var(--bg-hover)' }}>current_data</code>
+            Table name: <code className="font-mono px-1 rounded" style={{ background: 'var(--bg-hover)', color: 'var(--text)' }}>current_data</code>
           </span>
+          <div className="relative" ref={historyRef}>
+            <button
+              className="btn py-0.5 px-2"
+              onClick={() => setHistoryOpen((v) => !v)}
+              title="Query history"
+              style={historyOpen ? { color: 'var(--accent)', background: 'var(--bg-hover)' } : undefined}
+            >
+              <History size={12} />
+            </button>
+            {historyOpen && (
+              <div
+                className="absolute right-0 mt-1 rounded-lg shadow-xl overflow-hidden animate-fade-in flex flex-col"
+                style={{
+                  top: '100%',
+                  width: 420,
+                  maxWidth: '80vw',
+                  zIndex: 60,
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
+                  {sqlHistory.length === 0 ? (
+                    <div className="px-3 py-4 text-center" style={{ color: 'var(--text-muted)' }}>
+                      No queries yet — run one and it will show up here.
+                    </div>
+                  ) : (
+                    sqlHistory.map((q, i) => (
+                      <div
+                        key={i}
+                        className="px-3 py-1.5 font-mono truncate cursor-pointer transition-colors"
+                        style={{ color: 'var(--text)' }}
+                        title={q}
+                        onClick={() => { setSqlQuery(q); setHistoryOpen(false) }}
+                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)')}
+                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+                      >
+                        {q}
+                      </div>
+                    ))
+                  )}
+                </div>
+                {sqlHistory.length > 0 && (
+                  <button
+                    className="flex items-center justify-center gap-1.5 py-1.5 border-t transition-colors"
+                    style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                    onClick={() => { clearSqlHistory(); setHistoryOpen(false) }}
+                  >
+                    <Trash2 size={11} />
+                    Clear history
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <button className="btn py-0.5 px-2" onClick={close}>
             <X size={12} />
           </button>
@@ -63,7 +135,7 @@ export function SQLEditor() {
           value={sqlQuery}
           onChange={(v) => setSqlQuery(v)}
           extensions={[sql()]}
-          theme="dark"
+          theme={isDark ? 'dark' : 'light'}
           style={{ height: '100%' }}
           basicSetup={{
             lineNumbers: false,
@@ -87,17 +159,16 @@ export function SQLEditor() {
       >
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
           {error ? (
-            <span className="text-xs truncate" style={{ color: '#f87171' }}>{error}</span>
+            <span className="text-xs truncate" style={{ color: 'var(--unsaved)' }}>{error}</span>
           ) : (
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ctrl+Enter to run</span>
+            <span className="mono-label" style={{ color: 'var(--text-muted)' }}>CTRL+⏎ to run</span>
           )}
           {hint && (
-            <span className="text-xs" style={{ color: '#fbbf24' }}>{hint}</span>
+            <span className="text-xs" style={{ color: 'var(--t-str)' }}>{hint}</span>
           )}
         </div>
-        <button className="btn-primary text-xs py-1 px-3 shrink-0" onClick={run}>
-          <Play size={11} />
-          Run
+        <button className="btn-primary text-xs py-1 px-3.5 shrink-0" onClick={run}>
+          Run →
         </button>
       </div>
     </div>

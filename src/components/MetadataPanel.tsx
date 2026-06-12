@@ -1,24 +1,8 @@
 import { useEffect, useState } from 'react'
 import { X, FolderOpen, HardDrive, Rows, Columns, ExternalLink, Copy, Check } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
+import { typeColorVar, formatBytes } from '../typeStyle'
 import type { Metadata } from '../types'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
-}
-
-function typeColor(type: string): string {
-  const t = type.toUpperCase()
-  if (/INT|BIGINT|SMALLINT|TINYINT|HUGEINT/.test(t)) return '#60a5fa'
-  if (/DOUBLE|FLOAT|DECIMAL|NUMERIC|REAL/.test(t)) return '#34d399'
-  if (/VARCHAR|TEXT|STRING|CHAR/.test(t)) return '#f59e0b'
-  if (/BOOLEAN/.test(t)) return '#a78bfa'
-  if (/DATE|TIME|TIMESTAMP/.test(t)) return '#f87171'
-  return '#71717a'
-}
 
 export function MetadataPanel() {
   const { filePath, setActivePanel } = useAppStore()
@@ -111,7 +95,7 @@ export function MetadataPanel() {
                 onClick={() => copySchema(meta.schema)}
                 title="Copy schema to clipboard"
               >
-                {copied ? <Check size={11} style={{ color: '#34d399' }} /> : <Copy size={11} />}
+                {copied ? <Check size={11} style={{ color: 'var(--t-float)' }} /> : <Copy size={11} />}
                 {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
@@ -130,10 +114,7 @@ export function MetadataPanel() {
                       {col.name}
                     </span>
                   </div>
-                  <span
-                    className="text-xs font-mono px-2 py-0.5 rounded shrink-0"
-                    style={{ background: 'var(--bg)', color: typeColor(col.type) }}
-                  >
+                  <span className="type-badge" style={{ color: typeColorVar(col.type) }}>
                     {col.type}
                   </span>
                 </div>

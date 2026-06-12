@@ -8,6 +8,8 @@ import { DataTable } from './components/DataTable'
 import { SQLEditor } from './components/SQLEditor'
 import { MetadataPanel } from './components/MetadataPanel'
 import { SettingsPanel } from './components/SettingsPanel'
+import { NewFileModal } from './components/NewFileModal'
+import { SaveDialog } from './components/SaveDialog'
 
 type DragState = 'none' | 'valid' | 'invalid'
 
@@ -16,7 +18,7 @@ const SUPPORTED = /\.(parquet|csv)$/i
 export default function App() {
   useTheme()
 
-  const { filePath, sqlMode, sqlEditorOpen, activePanel, error, clearError, openFile, saveFile } = useAppStore()
+  const { filePath, isNewFile, sqlMode, sqlEditorOpen, activePanel, error, clearError, openFile } = useAppStore()
 
   useEffect(() => {
     if (!error) return
@@ -24,24 +26,26 @@ export default function App() {
     return () => clearTimeout(t)
   }, [error, clearError])
 
+  const [newFileModalOpen, setNewFileModalOpen] = useState(false)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+
   useEffect(() => {
-    async function onKeyDown(e: KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 's' || !filePath) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 's') return
+      if (!filePath && !isNewFile) return
       e.preventDefault()
-      const ext = filePath.endsWith('.csv') ? 'csv' : 'parquet'
-      const savePath = await window.api.saveFileDialog(ext)
-      if (savePath) await saveFile(savePath)
+      setSaveDialogOpen(true)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [filePath, saveFile])
+  }, [filePath, isNewFile])
 
   useEffect(() => {
     return window.api.onOpenFile((path) => {
-      if (filePath) window.api.openNewWindow(path)
+      if (filePath || isNewFile) window.api.openNewWindow(path)
       else openFile(path)
     })
-  }, [filePath, openFile])
+  }, [filePath, isNewFile, openFile])
 
   const [dragState, setDragState] = useState<DragState>('none')
 
@@ -81,7 +85,7 @@ export default function App() {
       // file.path is an Electron extension on the File object
       const path: string = (file as any).path || ''
       if (!path) return
-      if (filePath) window.api.openNewWindow(path)
+      if (filePath || isNewFile) window.api.openNewWindow(path)
       else openFile(path)
     }
 
@@ -97,7 +101,7 @@ export default function App() {
     }
   }, [filePath, openFile])
 
-  const showOverlay = dragState !== 'none' && (filePath !== null || dragState === 'invalid')
+  const showOverlay = dragState !== 'none' && (filePath !== null || isNewFile || dragState === 'invalid')
   const isValid = dragState === 'valid'
 
   return (
@@ -110,15 +114,16 @@ export default function App() {
         <div
           className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"
           style={{
-            background: isValid ? 'rgba(99,102,241,0.13)' : 'rgba(239,68,68,0.18)',
-            border: `2px solid ${isValid ? 'var(--accent)' : '#ef4444'}`,
+            background: isValid ? 'var(--accent-wash2)' : 'var(--unsaved-wash)',
+            border: `2px dashed ${isValid ? 'var(--accent)' : 'var(--unsaved)'}`,
           }}
         >
           <div
-            className="px-5 py-3 rounded-xl text-sm font-semibold animate-fade-in"
+            className="px-5 py-2.5 rounded font-mono text-xs animate-fade-in"
             style={{
-              background: isValid ? 'var(--accent)' : '#ef4444',
-              color: 'white',
+              background: isValid ? 'var(--btn-bg)' : 'var(--unsaved)',
+              color: isValid ? 'var(--btn-fg)' : '#fff',
+              letterSpacing: '0.04em',
             }}
           >
             {isValid ? 'Drop to open file' : 'Unsupported file type'}
@@ -126,22 +131,30 @@ export default function App() {
         </div>
       )}
 
+      {newFileModalOpen && <NewFileModal onClose={() => setNewFileModalOpen(false)} />}
+      {saveDialogOpen && <SaveDialog onClose={() => setSaveDialogOpen(false)} />}
+
       <Titlebar />
-      <Toolbar />
+      <Toolbar onNewFile={() => setNewFileModalOpen(true)} onSave={() => setSaveDialogOpen(true)} />
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 relative">
         {sqlEditorOpen && filePath && <SQLEditor />}
 
         <div className="flex-1 min-h-0">
-          {filePath ? <DataTable /> : <DropZone />}
+          {(filePath || isNewFile) ? <DataTable /> : <DropZone onNewFile={() => setNewFileModalOpen(true)} />}
         </div>
 
         {/* Error toast */}
         {error && (
           <div
-            className="absolute bottom-10 left-1/2 -translate-x-1/2 max-w-lg px-4 py-2.5 rounded-lg shadow-xl text-xs animate-fade-in"
-            style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626' }}
+            className="absolute bottom-10 left-1/2 -translate-x-1/2 max-w-lg px-4 py-2.5 rounded shadow-xl text-xs animate-fade-in"
+            style={{
+              background: 'var(--bg-surface)',
+              color: 'var(--text)',
+              border: '1px solid var(--border)',
+              borderLeft: '3px solid var(--unsaved)',
+            }}
           >
             {error}
           </div>

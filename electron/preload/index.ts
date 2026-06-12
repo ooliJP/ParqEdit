@@ -44,7 +44,12 @@ const api = {
     filters?: Record<string, string[]>
     sqlMode?: boolean
     sqlQuery?: string
+    format?: string
+    compression?: string
   }) => ipcRenderer.invoke('db:save-file', params),
+  createNew: (columns: { name: string; type: string }[]) =>
+    ipcRenderer.invoke('db:create-new', columns),
+  appendRow: () => ipcRenderer.invoke('db:append-row'),
 
   // Shell
   showInExplorer: (filePath: string) => ipcRenderer.invoke('shell:show-item', filePath),

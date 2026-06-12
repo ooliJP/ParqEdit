@@ -5,15 +5,10 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Cascadia Code', 'monospace'],
+        sans: ['Geist Sans', 'Geist', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['Geist Mono', 'ui-monospace', 'SF Mono', 'monospace'],
+        display: ['Space Grotesk', 'Geist Sans', 'system-ui', 'sans-serif'],
       },
-      colors: {
-        zinc: {
-          925: '#111113',
-          950: '#09090b',
-        }
-      }
     },
   },
   plugins: [],

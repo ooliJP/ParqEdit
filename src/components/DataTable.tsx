@@ -1,12 +1,18 @@
 import { useRef, useState, useCallback, useEffect, KeyboardEvent, memo } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowUp, ArrowDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useAppStore } from '../store/appStore'
+import { useAppStore, ALL_ROWS, BLOCK_SIZE } from '../store/appStore'
 import { FilterDropdown } from './FilterDropdown'
+import { IconArrowUp, IconArrowDown, IconFilter, IconChevronLeft, IconChevronRight } from './icons'
+import { typeColorVar, formatBytes } from '../typeStyle'
 import type { ColumnInfo, RowData } from '../types'
 
 const COL_WIDTH = 160
 const ROW_HEIGHT = 32
+const HEADER_HEIGHT = 36
+const OVERSCAN = 10
+// Browsers cap element height around 33.5M px (~1M rows at 32px). Above this
+// the body height is clamped and scroll position maps to rows proportionally,
+// so the scrollbar can address datasets of any size.
+const MAX_BODY_HEIGHT = 30_000_000
 
 const PAGE_SIZE_OPTIONS = [
   { label: '500', value: 500 },
@@ -14,18 +20,8 @@ const PAGE_SIZE_OPTIONS = [
   { label: '2 000', value: 2000 },
   { label: '5 000', value: 5000 },
   { label: '10 000', value: 10000 },
-  { label: 'All', value: 999999 },
+  { label: 'All', value: ALL_ROWS },
 ]
-
-function typeColor(type: string): string {
-  const t = type.toUpperCase()
-  if (/INT|BIGINT|SMALLINT|TINYINT|HUGEINT/.test(t)) return '#60a5fa'
-  if (/DOUBLE|FLOAT|DECIMAL|NUMERIC|REAL/.test(t)) return '#34d399'
-  if (/VARCHAR|TEXT|STRING|CHAR/.test(t)) return '#f59e0b'
-  if (/BOOLEAN/.test(t)) return '#a78bfa'
-  if (/DATE|TIME|TIMESTAMP/.test(t)) return '#f87171'
-  return '#71717a'
-}
 
 function formatValue(val: any): string {
   if (val === null || val === undefined) return ''
@@ -74,6 +70,7 @@ interface TableRowProps {
   top: number
   isRowSelected: boolean
   selectedCols: Set<number>
+  editedCells: Record<string, true>
   editingCell: { rowId: number; column: string } | null
   onDoubleClick: (rowId: number, col: string) => void
   onCommit: (rowId: number, col: string, val: string) => void
@@ -84,7 +81,7 @@ interface TableRowProps {
 
 const TableRow = memo(function TableRow({
   row, schema, colWidths, index, offset, top,
-  isRowSelected, selectedCols,
+  isRowSelected, selectedCols, editedCells,
   editingCell, onDoubleClick, onCommit, onCancel,
   onRowNumMouseDown, onRowNumMouseEnter,
 }: TableRowProps) {
@@ -112,11 +109,12 @@ const TableRow = memo(function TableRow({
         const isEditing = editingCell?.rowId === row.__rowid__ && editingCell?.column === col.name
         const isNull = val === null || val === undefined
         const isColSel = selectedCols.has(colIdx)
+        const isEdited = editedCells[`${row.__rowid__}:${col.name}`] === true
         const w = colWidths[col.name] ?? COL_WIDTH
         return (
           <div
             key={col.name}
-            className={`table-cell selectable${isNull ? ' null-value' : ''}${isEditing ? ' editing' : ''}${isColSel ? ' col-selected' : ''}`}
+            className={`table-cell selectable${isNull ? ' null-value' : ''}${isEditing ? ' editing' : ''}${isColSel ? ' col-selected' : ''}${isEdited ? ' edited' : ''}`}
             style={{ width: w, minWidth: w }}
             onDoubleClick={() => onDoubleClick(row.__rowid__, col.name)}
             title={isNull ? 'NULL' : formatValue(val)}
@@ -137,12 +135,49 @@ const TableRow = memo(function TableRow({
   )
 })
 
+// Shown in windowed "All" mode while the row's block is being fetched.
+function PlaceholderRow({ index, top }: { index: number; top: number }) {
+  return (
+    <div
+      className="table-row"
+      style={{
+        position: 'absolute',
+        top,
+        height: ROW_HEIGHT,
+        background: index % 2 === 1 ? 'var(--row-alt)' : undefined,
+      }}
+    >
+      <div
+        className="table-cell row-num-cell"
+        style={{ width: 56, minWidth: 56, justifyContent: 'flex-end', color: 'var(--text-muted)', fontSize: 10 }}
+      >
+        {index + 1}
+      </div>
+      <div className="table-cell" style={{ border: 'none', color: 'var(--text-muted)', fontSize: 10 }}>
+        …
+      </div>
+    </div>
+  )
+}
+
 export function DataTable() {
   const {
     schema, rows, totalRows, offset, pageSize, filePath,
+    blocks, viewRevision, ensureRange,
     sortCol, sortDir, columnFilters, editingCell,
+    editedCells, editCount, queryMs, fileSizeBytes,
     setSortCol, setEditingCell, updateCell, loadPage, setPageSize,
   } = useAppStore()
+
+  const isAllMode = pageSize === ALL_ROWS
+
+  const getRow = useCallback(
+    (index: number): RowData | undefined =>
+      isAllMode
+        ? blocks[Math.floor(index / BLOCK_SIZE)]?.[index % BLOCK_SIZE]
+        : rows[index],
+    [isAllMode, blocks, rows]
+  )
 
   const [filterDropdown, setFilterDropdown] = useState<{ col: string; rect: DOMRect } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -186,8 +221,16 @@ export function DataTable() {
   const [selectedCols, setSelectedCols] = useState<Set<number>>(new Set())
   const rowDragRef = useRef<{ start: number } | null>(null)
   const colDragRef = useRef<{ startCol: number; moved: boolean } | null>(null)
+  // Anchors for Shift+click range selection
+  const rowAnchorRef = useRef<number | null>(null)
+  const colAnchorRef = useRef<number | null>(null)
 
-  useEffect(() => { setSelectedRows(new Set()); setSelectedCols(new Set()) }, [filePath, offset])
+  useEffect(() => {
+    setSelectedRows(new Set())
+    setSelectedCols(new Set())
+    rowAnchorRef.current = null
+    colAnchorRef.current = null
+  }, [filePath, offset, viewRevision])
 
   useEffect(() => {
     function onUp() {
@@ -201,6 +244,13 @@ export function DataTable() {
   const handleRowNumMouseDown = useCallback((e: React.MouseEvent, rowIdx: number) => {
     e.preventDefault()
     setSelectedCols(new Set())
+    if (e.shiftKey && rowAnchorRef.current !== null) {
+      const a = rowAnchorRef.current
+      const [min, max] = [Math.min(a, rowIdx), Math.max(a, rowIdx)]
+      setSelectedRows(new Set(Array.from({ length: max - min + 1 }, (_, i) => min + i)))
+      return
+    }
+    rowAnchorRef.current = rowIdx
     if (e.ctrlKey || e.metaKey) {
       setSelectedRows(prev => {
         const next = new Set(prev)
@@ -221,6 +271,18 @@ export function DataTable() {
   }, [])
 
   function handleColHeaderMouseDown(e: React.MouseEvent, colIdx: number) {
+    if (e.shiftKey && colAnchorRef.current !== null) {
+      e.preventDefault()
+      e.stopPropagation()
+      const a = colAnchorRef.current
+      const [min, max] = [Math.min(a, colIdx), Math.max(a, colIdx)]
+      setSelectedRows(new Set())
+      setSelectedCols(new Set(Array.from({ length: max - min + 1 }, (_, i) => min + i)))
+      // Marking the drag as "moved" stops the click handler from sorting
+      colDragRef.current = { startCol: a, moved: true }
+      return
+    }
+    colAnchorRef.current = colIdx
     if (e.ctrlKey || e.metaKey) {
       e.stopPropagation()
       setSelectedRows(new Set())
@@ -250,7 +312,7 @@ export function DataTable() {
   function handleColHeaderClick(e: React.MouseEvent, col: ColumnInfo) {
     if (colDragRef.current?.moved) { colDragRef.current = null; return }
     colDragRef.current = null
-    if (e.ctrlKey || e.metaKey) return
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return
     setSelectedRows(new Set())
     setSelectedCols(new Set())
     setSortCol(col.name)
@@ -258,7 +320,13 @@ export function DataTable() {
 
   function copyToClipboard() {
     const colsToUse = selectedCols.size > 0 ? schema.filter((_, i) => selectedCols.has(i)) : schema
-    const rowsToUse = selectedRows.size > 0 ? rows.filter((_, i) => selectedRows.has(i)) : rows
+    const rowIndices = selectedRows.size > 0
+      ? [...selectedRows].sort((a, b) => a - b)
+      : isAllMode
+        ? Object.keys(blocks).map(Number).sort((a, b) => a - b)
+            .flatMap((b) => blocks[b].map((_, i) => b * BLOCK_SIZE + i))
+        : rows.map((_, i) => i)
+    const rowsToUse = rowIndices.map(getRow).filter((r): r is RowData => r !== undefined)
     if (rowsToUse.length === 0 || colsToUse.length === 0) return
     const header = colsToUse.map(c => tsvEscape(c.name)).join('\t')
     const body = rowsToUse.map(row =>
@@ -283,20 +351,77 @@ export function DataTable() {
     }
   }
 
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => containerRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
-  })
+  // --- custom windowing ---------------------------------------------------
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportH, setViewportH] = useState(600)
 
-  const currentPage = Math.floor(offset / pageSize) + 1
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))
-  const startRow = totalRows === 0 ? 0 : offset + 1
-  const endRow = Math.min(offset + rows.length, totalRows)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    let raf = 0
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => { raf = 0; setScrollTop(el.scrollTop) })
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    const ro = new ResizeObserver(() => setViewportH(el.clientHeight))
+    ro.observe(el)
+    setViewportH(el.clientHeight)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      ro.disconnect()
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
 
-  function prevPage() { if (offset > 0) loadPage(Math.max(0, offset - pageSize)) }
-  function nextPage() { if (offset + pageSize < totalRows) loadPage(offset + pageSize) }
+  const rowCount = isAllMode ? totalRows : rows.length
+  const realHeight = rowCount * ROW_HEIGHT
+  const bodyHeight = Math.min(realHeight, MAX_BODY_HEIGHT)
+  const scaled = realHeight > bodyHeight
+  const visibleCount = Math.max(1, Math.ceil(Math.max(0, viewportH - HEADER_HEIGHT) / ROW_HEIGHT) + 1)
+
+  let firstRow: number
+  if (!scaled) {
+    firstRow = Math.min(Math.max(0, rowCount - 1), Math.floor(Math.max(0, scrollTop) / ROW_HEIGHT))
+  } else {
+    // Proportional mapping: scrollbar position picks the row range, rows are
+    // anchored to the current scroll offset.
+    const maxScroll = Math.max(1, HEADER_HEIGHT + bodyHeight - viewportH)
+    const ratio = Math.min(1, Math.max(0, scrollTop / maxScroll))
+    firstRow = Math.round(ratio * Math.max(0, rowCount - visibleCount))
+  }
+  const renderStart = Math.max(0, firstRow - OVERSCAN)
+  const renderEnd = Math.min(rowCount - 1, firstRow + visibleCount + OVERSCAN)
+  const rowTop = (idx: number) =>
+    scaled ? scrollTop + (idx - firstRow) * ROW_HEIGHT : idx * ROW_HEIGHT
+
+  // Windowed mode: pull missing blocks for the rendered range on demand.
+  // Debounced slightly so scrubbing the scrollbar doesn't queue fetches for
+  // every range it flies past.
+  useEffect(() => {
+    if (!isAllMode || totalRows === 0) return
+    const t = setTimeout(() => ensureRange(renderStart, renderEnd), 60)
+    return () => clearTimeout(t)
+  }, [isAllMode, renderStart, renderEnd, totalRows, viewRevision, ensureRange])
+
+  // Jump back to the top whenever the dataset shape changes (sort/filter/SQL/file).
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0 })
+    setScrollTop(0)
+  }, [viewRevision, filePath])
+
+  const firstVisible = firstRow
+  const lastVisible = Math.min(Math.max(0, rowCount - 1), firstRow + visibleCount - 1)
+
+  const currentPage = isAllMode ? 1 : Math.floor(offset / pageSize) + 1
+  const totalPages = isAllMode ? 1 : Math.max(1, Math.ceil(totalRows / pageSize))
+  const startRow = totalRows === 0 ? 0 : isAllMode ? firstVisible + 1 : offset + 1
+  const endRow = isAllMode
+    ? Math.min(lastVisible + 1, totalRows)
+    : Math.min(offset + rows.length, totalRows)
+
+  function prevPage() { if (!isAllMode && offset > 0) loadPage(Math.max(0, offset - pageSize)) }
+  function nextPage() { if (!isAllMode && offset + pageSize < totalRows) loadPage(offset + pageSize) }
 
   function handleFilterClick(col: ColumnInfo, e: React.MouseEvent) {
     e.stopPropagation()
@@ -362,24 +487,21 @@ export function DataTable() {
                 onClick={(e) => handleColHeaderClick(e, col)}
               >
                 <span className="truncate flex-1">{col.name}</span>
-                <span
-                  className="text-[10px] px-1 py-0.5 rounded shrink-0 font-mono"
-                  style={{ background: 'var(--bg-hover)', color: typeColor(col.type) }}
-                >
+                <span className="type-badge" style={{ color: typeColorVar(col.type) }}>
                   {col.type.split('(')[0].toLowerCase()}
                 </span>
                 {isSorted && (
                   sortDir === 'asc'
-                    ? <ArrowUp size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                    : <ArrowDown size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                    ? <IconArrowUp size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                    : <IconArrowDown size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                 )}
                 <button
                   className="shrink-0 rounded p-0.5 no-drag transition-colors"
-                  style={{ color: isFiltered ? 'var(--accent)' : 'var(--text-muted)' }}
+                  style={{ color: isFiltered ? 'var(--accent)' : 'var(--text-muted)', opacity: isFiltered ? 1 : 0.55 }}
                   onClick={(e) => handleFilterClick(col, e)}
                   title="Filter column values"
                 >
-                  <Filter size={11} />
+                  <IconFilter size={11} />
                 </button>
                 {/* Resize handle — stopPropagation on click prevents sort from firing */}
                 <div
@@ -393,44 +515,63 @@ export function DataTable() {
         </div>
 
         {/* Virtual body */}
-        <div className="table-body" style={{ height: rowVirtualizer.getTotalSize() }}>
-          {rowVirtualizer.getVirtualItems().map((vRow) => (
-            <TableRow
-              key={vRow.index}
-              row={rows[vRow.index]}
-              schema={schema}
-              colWidths={colWidths}
-              index={vRow.index}
-              offset={offset}
-              top={vRow.start}
-              isRowSelected={selectedRows.has(vRow.index)}
-              selectedCols={selectedCols}
-              editingCell={editingCell}
-              onDoubleClick={handleCellDoubleClick}
-              onCommit={handleCommit}
-              onCancel={handleCancel}
-              onRowNumMouseDown={handleRowNumMouseDown}
-              onRowNumMouseEnter={handleRowNumMouseEnter}
-            />
-          ))}
+        <div className="table-body" style={{ height: bodyHeight }}>
+          {rowCount > 0 && Array.from({ length: renderEnd - renderStart + 1 }, (_, i) => {
+            const index = renderStart + i
+            const top = rowTop(index)
+            const row = getRow(index)
+            if (!row) {
+              return <PlaceholderRow key={index} index={index} top={top} />
+            }
+            return (
+              <TableRow
+                key={index}
+                row={row}
+                schema={schema}
+                colWidths={colWidths}
+                index={index}
+                offset={isAllMode ? 0 : offset}
+                top={top}
+                isRowSelected={selectedRows.has(index)}
+                selectedCols={selectedCols}
+                editedCells={editedCells}
+                editingCell={editingCell}
+                onDoubleClick={handleCellDoubleClick}
+                onCommit={handleCommit}
+                onCancel={handleCancel}
+                onRowNumMouseDown={handleRowNumMouseDown}
+                onRowNumMouseEnter={handleRowNumMouseEnter}
+              />
+            )
+          })}
         </div>
       </div>
 
       {/* Status / pagination bar */}
       <div
-        className="flex items-center justify-between px-3 h-9 shrink-0 border-t text-xs gap-3"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-muted)' }}
+        className="mono-label flex items-center justify-between px-3 h-8 shrink-0 border-t gap-3"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-sub)' }}
       >
-        {/* Row count / selection hint */}
-        <span className="shrink-0">
+        {/* Row counts / selection hint, unsaved edits */}
+        <span className="shrink-0 flex items-center gap-3">
           {selCount > 0 ? (
             <span style={{ color: 'var(--accent)' }}>
               {selLabel}
               <span className="ml-2 opacity-60">· Ctrl+C to copy</span>
             </span>
           ) : totalRows === 0 ? 'No rows' : (
-            <>Rows {startRow.toLocaleString()}–{endRow.toLocaleString()} of{' '}
-              <strong style={{ color: 'var(--text)' }}>{totalRows.toLocaleString()}</strong>
+            <span>
+              Rows <span style={{ color: 'var(--text)' }}>{startRow.toLocaleString()}–{endRow.toLocaleString()}</span> of{' '}
+              <span style={{ color: 'var(--text)' }}>{totalRows.toLocaleString()}</span>
+              {' '}· <span style={{ color: 'var(--text)' }}>{schema.length}</span> col{schema.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          {editCount > 0 && (
+            <>
+              <span className="w-px h-3" style={{ background: 'var(--border)' }} />
+              <span style={{ color: 'var(--unsaved)' }}>
+                ● {editCount} unsaved edit{editCount !== 1 ? 's' : ''}
+              </span>
             </>
           )}
         </span>
@@ -438,27 +579,26 @@ export function DataTable() {
         {/* Page nav */}
         {totalPages > 1 && (
           <div className="flex items-center gap-1 shrink-0">
-            <button className="btn py-1 px-1.5" onClick={prevPage} disabled={offset === 0}
+            <button className="btn py-0.5 px-1" onClick={prevPage} disabled={offset === 0}
               style={offset === 0 ? { opacity: 0.3, pointerEvents: 'none' } : undefined}>
-              <ChevronLeft size={13} />
+              <IconChevronLeft size={12} />
             </button>
-            <span style={{ color: 'var(--text)' }}>{currentPage} / {totalPages}</span>
-            <button className="btn py-1 px-1.5" onClick={nextPage} disabled={offset + pageSize >= totalRows}
+            <span style={{ color: 'var(--text)' }}>{currentPage.toLocaleString()} / {totalPages.toLocaleString()}</span>
+            <button className="btn py-0.5 px-1" onClick={nextPage} disabled={offset + pageSize >= totalRows}
               style={offset + pageSize >= totalRows ? { opacity: 0.3, pointerEvents: 'none' } : undefined}>
-              <ChevronRight size={13} />
+              <IconChevronRight size={12} />
             </button>
           </div>
         )}
 
-        {/* Right side */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span>{schema.length} col{schema.length !== 1 ? 's' : ''}</span>
-          <div className="flex items-center gap-1">
-            <span>Rows/page:</span>
+        {/* Right side: page size, query time, file info, engine */}
+        <div className="flex items-center gap-3 shrink-0" style={{ color: 'var(--text-muted)' }}>
+          <div className="flex items-center gap-1.5">
+            <span>rows/page</span>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="text-xs rounded px-1 py-0.5 outline-none cursor-pointer"
+              className="mono-label rounded px-1 py-0.5 outline-none cursor-pointer"
               style={{ background: 'var(--bg-hover)', color: 'var(--text)', border: '1px solid var(--border)' }}
             >
               {PAGE_SIZE_OPTIONS.map((o) => (
@@ -466,6 +606,22 @@ export function DataTable() {
               ))}
             </select>
           </div>
+          {queryMs !== null && (
+            <>
+              <span className="w-px h-3" style={{ background: 'var(--border)' }} />
+              <span>query <span style={{ color: 'var(--text-sub)' }}>{queryMs} ms</span></span>
+            </>
+          )}
+          {filePath && fileSizeBytes !== null && (
+            <>
+              <span className="w-px h-3" style={{ background: 'var(--border)' }} />
+              <span>{filePath.split('.').pop()?.toLowerCase()} · {formatBytes(fileSizeBytes)}</span>
+            </>
+          )}
+          <span className="w-px h-3" style={{ background: 'var(--border)' }} />
+          <span title="All reads, queries and writes run on an embedded DuckDB engine">
+            engine <span style={{ color: 'var(--text-sub)' }}>duckdb</span>
+          </span>
         </div>
       </div>
 

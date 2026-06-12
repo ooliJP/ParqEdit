@@ -54,7 +54,7 @@ export function SettingsPanel() {
             About
           </h3>
           <div className="space-y-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <p><span style={{ color: 'var(--text)' }}>ParqEdit</span> v1.0.0</p>
+            <p><span style={{ color: 'var(--text)' }}>ParqEdit</span> v1.1.0</p>
             <p>Powered by DuckDB — read, query and edit Parquet & CSV files with real SQL.</p>
             <p>Double-click any cell to edit its value.</p>
             <p>Click a column header to sort. Use the filter icon for value-based filtering.</p>
